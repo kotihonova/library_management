@@ -1,23 +1,15 @@
 import sys
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Callable
 from library import Library
 from errors import InvalidChoiceError, BookNotFoundError, DuplicateBookError, InvalidStatusError, BookSearchError
+
+json_file = 'library.json'
 
 
 def quit_app() -> None:
     """Quits the application."""
     print("Quitting the application...")
     sys.exit()
-
-
-menu_options: Dict[str, Tuple[str, str]] = {
-    'a': ("Add a book", 'add_book'),
-    'd': ("Delete a book", 'delete_book'),
-    'e': ("Edit status", 'edit_status'),
-    's': ("Find a book", 'find_book'),
-    'l': ("List of all books", 'list_books'),
-    'q': ("Quit", quit_app),
-}
 
 
 def show_menu() -> None:
@@ -104,6 +96,7 @@ def handle_choice(choice: str, library: 'Library') -> None:
 def main():
     """Main function to run the library console application."""
     library = Library()
+    library.load_library(json_file)
     while True:
         show_menu()
         choice = input("Choose an option: ").strip().lower()
@@ -114,4 +107,12 @@ def main():
 
 
 if __name__ == "__main__":
+    menu_options: Dict[str, Tuple[str, Callable]] = {
+        'a': ("Add a book", add_book),
+        'd': ("Delete a book", delete_book),
+        'e': ("Edit status", edit_status),
+        's': ("Find a book", find_book),
+        'l': ("List of all books", list_books),
+        'q': ("Quit", quit_app),
+    }
     main()

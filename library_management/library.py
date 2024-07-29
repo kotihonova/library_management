@@ -1,7 +1,7 @@
 import json
 from typing import List, Union
 from book import Book
-from errors import DuplicateBookError, InvalidStatusError, BookNotFoundError, LibraryFileError
+from errors import DuplicateBookError, InvalidStatusError, BookNotFoundError, LibraryFileError, BookSearchError
 
 
 class Library:
@@ -10,6 +10,7 @@ class Library:
     def __init__(self) -> None:
         self.books: List[Book] = []
         self.next_id: int = 1
+        self.filename = 'library.json'
 
     def add_book(self, title: str, author: str, year: int) -> str:
         """
@@ -26,12 +27,15 @@ class Library:
         Raises:
             DuplicateBookError: If the book already exists in the library_management.
         """
-        if any(book.title == title and book.author == author and book.year == year for book in self.books):
-            raise DuplicateBookError(title, author, year)
-        book = Book(self.next_id, title, author, year)
-        self.books.append(book)
-        self.next_id += 1
-        return f"Book '{title}' by {author} added with ID {book.book_id}."
+        if self.books:
+            self.next_id = self.books[-1].book_id + 1
+
+        if [book for book in self.books if book.title == title and book.author == author]:
+            raise DuplicateBookError(title, author)
+        new_book = Book(self.next_id, title, author, year)
+        self.books.append(new_book)
+        self.save_library(filename=self.filename)
+        return f"Book '{title}' by {author} added with ID {new_book.book_id}."
 
     def delete_book(self, book_id: int) -> str:
         """
@@ -46,8 +50,11 @@ class Library:
         Raises:
             BookNotFoundError: If the book with the specified ID is not found.
         """
-        book = self._find_book_by_id(book_id)
-        self.books.remove(book)
+        book_to_delete = self._find_book_by_id(book_id)
+        if book_to_delete is None:
+            raise BookNotFoundError(book_id)
+        self.books.remove(book_to_delete)
+        self.save_library(filename=self.filename)
         return f"Book with ID {book_id} has been deleted."
 
     def edit_status(self, book_id: int, new_status: str) -> str:
@@ -67,8 +74,11 @@ class Library:
         """
         if new_status not in ['available', 'checked out']:
             raise InvalidStatusError(new_status)
-        book = self._find_book_by_id(book_id)
-        book.status = new_status
+        book_to_edit = next((book for book in self.books if book.book_id == book_id), None)
+        if book_to_edit is None:
+            raise BookNotFoundError(book_id)
+        book_to_edit.status = new_status
+        self.save_library(filename=self.filename)
         return f"Status of book with ID {book_id} has been updated to '{new_status}'."
 
     def find_books(self, search_term: str) -> List[Book]:
@@ -89,7 +99,7 @@ class Library:
             if search_term in book.title or search_term in book.author or search_term == str(book.year)
         ]
         if not found_books:
-            raise BookNotFoundError(-1)  # ID -1 indicates no specific book was being searched for
+            raise BookSearchError(search_term)  # Raises if no specific book was being searched for
         return found_books
 
     def list_books(self) -> Union[List[Book], str]:
@@ -99,17 +109,18 @@ class Library:
         Returns:
             Union[List[Book], str]: A list of all books or a message if the library_management is empty.
         """
-        if not self.books:
-            return "No books in the library_management."
-        return self.books
+        book_list = [
+            f"'{book.title}' by {book.author} ({book.year}). ID {book.book_id}"
+            for book in self.books
+        ]
+        return book_list if book_list else "No books in the library."
 
     def save_library(self, filename: str) -> str:
         """
         Saves the library_management to a JSON file.
 
         Args:
-            filename (str): The name of the file to save the library_management to.
-
+            filename: str: The name of the JSON file to save.
         Returns:
             str: A message confirming the library_management was saved.
 
@@ -118,7 +129,7 @@ class Library:
         """
         try:
             with open(filename, 'w') as file:
-                json.dump([book.__dict__ for book in self.books], file, indent=4)
+                json.dump({'books_in_library': [book.__dict__ for book in self.books]}, file, indent=4)
             return f"Library saved to {filename}"
         except IOError as e:
             raise LibraryFileError(filename, str(e))
@@ -128,8 +139,7 @@ class Library:
         Loads the library_management from a JSON file.
 
         Args:
-            filename (str): The name of the file to load the library_management from.
-
+            filename: str: The name of the JSON file to load.
         Returns:
             str: A message confirming the library_management was loaded.
 
@@ -138,9 +148,9 @@ class Library:
         """
         try:
             with open(filename, 'r') as file:
-                book_dicts = json.load(file)
-                self.books = [Book(**book_dict) for book_dict in book_dicts]
-            return f"Library loaded from {filename}"
+                library = json.load(file)
+                self.books = [Book(**book) for book in library['books_in_library']]
+                return f"Library loaded from {filename}"
         except FileNotFoundError:
             return f"No library_management file found at {filename}. Starting with an empty library_management."
         except (IOError, json.JSONDecodeError) as e:
